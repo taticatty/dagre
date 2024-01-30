@@ -33,7 +33,7 @@ module.exports = {
   version: require("./lib/version")
 };
 
-},{"./lib/debug":6,"./lib/layout":8,"./lib/util":27,"./lib/version":28,"@dagrejs/graphlib":29}],2:[function(require,module,exports){
+},{"./lib/debug":6,"./lib/layout":8,"./lib/util":28,"./lib/version":29,"@dagrejs/graphlib":30}],2:[function(require,module,exports){
 "use strict";
 
 let greedyFAS = require("./greedy-fas");
@@ -102,7 +102,7 @@ function undo(g) {
   });
 }
 
-},{"./greedy-fas":7,"./util":27}],3:[function(require,module,exports){
+},{"./greedy-fas":7,"./util":28}],3:[function(require,module,exports){
 let util = require("./util");
 
 module.exports = addBorderSegments;
@@ -141,7 +141,7 @@ function addBorderNode(g, prop, prefix, sg, sgNode, rank) {
   }
 }
 
-},{"./util":27}],4:[function(require,module,exports){
+},{"./util":28}],4:[function(require,module,exports){
 "use strict";
 
 module.exports = {
@@ -306,7 +306,7 @@ function debugOrdering(g) {
   return h;
 }
 
-},{"./util":27,"@dagrejs/graphlib":29}],7:[function(require,module,exports){
+},{"./util":28,"@dagrejs/graphlib":30}],7:[function(require,module,exports){
 let Graph = require("@dagrejs/graphlib").Graph;
 let List = require("./data/list");
 
@@ -432,7 +432,7 @@ function range(limit) {
   return range;
 }
 
-},{"./data/list":5,"@dagrejs/graphlib":29}],8:[function(require,module,exports){
+},{"./data/list":5,"@dagrejs/graphlib":30}],8:[function(require,module,exports){
 "use strict";
 
 let acyclic = require("./acyclic");
@@ -448,21 +448,25 @@ let order = require("./order");
 let position = require("./position");
 let util = require("./util");
 let Graph = require("@dagrejs/graphlib").Graph;
+let initDataOrder = require("./order/init-data-order");
 
 module.exports = layout;
 
 function layout(g, opts) {
   let time = opts && opts.debugTiming ? util.time : util.notime;
   time("layout", () => {
+    if (opts && !opts.keepNodeOrder && opts.prevGraph) {
+      time("  inheritOrder", () => inheritOrder(g, opts.prevGraph));
+    }
     let layoutGraph =
       time("  buildLayoutGraph", () => buildLayoutGraph(g));
-    time("  runLayout",        () => runLayout(layoutGraph, time));
+    time("  makeSpaceForEdgeLabels", () => makeSpaceForEdgeLabels(layoutGraph));
+    time("  runLayout",        () => runLayout(layoutGraph, time, opts));
     time("  updateInputGraph", () => updateInputGraph(g, layoutGraph));
   });
 }
 
-function runLayout(g, time) {
-  time("    makeSpaceForEdgeLabels", () => makeSpaceForEdgeLabels(g));
+function runLayout(g, time, opts) {
   time("    removeSelfEdges",        () => removeSelfEdges(g));
   time("    acyclic",                () => acyclic.run(g));
   time("    nestingGraph.run",       () => nestingGraph.run(g));
@@ -476,6 +480,9 @@ function runLayout(g, time) {
   time("    normalize.run",          () => normalize.run(g));
   time("    parentDummyChains",      () => parentDummyChains(g));
   time("    addBorderSegments",      () => addBorderSegments(g));
+  if (opts && opts.keepNodeOrder) {
+    time("    initDataOrder",        () => initDataOrder(g, opts.nodeOrder));
+  }
   time("    order",                  () => order(g));
   time("    insertSelfEdges",        () => insertSelfEdges(g));
   time("    adjustCoordinateSystem", () => coordinateSystem.adjust(g));
@@ -489,6 +496,19 @@ function runLayout(g, time) {
   time("    assignNodeIntersects",   () => assignNodeIntersects(g));
   time("    reversePoints",          () => reversePointsForReversedEdges(g));
   time("    acyclic.undo",           () => acyclic.undo(g));
+}
+
+function inheritOrder(currG, prevG) {
+  let prevNodeMap = prevG._nodes;
+  currG.nodes().forEach(n => {
+    let node = currG.node(n);
+    if (prevNodeMap[n] !== undefined) {
+      node.fixorder = prevNodeMap[n]._order;
+      delete prevNodeMap[n]._order;
+    } else {
+      delete node.fixorder;
+    }
+  });
 }
 
 /*
@@ -505,7 +525,8 @@ function updateInputGraph(inputGraph, layoutGraph) {
     if (inputLabel) {
       inputLabel.x = layoutLabel.x;
       inputLabel.y = layoutLabel.y;
-      inputLabel.rank = layoutLabel.rank;
+      inputLabel._order = layoutLabel.order;
+      inputLabel._rank = layoutLabel.rank;
 
       if (layoutGraph.children(v).length) {
         inputLabel.width = layoutLabel.width;
@@ -532,7 +553,7 @@ function updateInputGraph(inputGraph, layoutGraph) {
 let graphNumAttrs = ["nodesep", "edgesep", "ranksep", "marginx", "marginy"];
 let graphDefaults = { ranksep: 50, edgesep: 20, nodesep: 50, rankdir: "tb" };
 let graphAttrs = ["acyclicer", "ranker", "rankdir", "align"];
-let nodeNumAttrs = ["width", "height"];
+let nodeNumAttrs = ["width", "height", "layer", "fixorder"];
 let nodeDefaults = { width: 0, height: 0 };
 let edgeNumAttrs = ["minlen", "weight", "width", "height", "labeloffset"];
 let edgeDefaults = {
@@ -591,6 +612,12 @@ function buildLayoutGraph(inputGraph) {
 function makeSpaceForEdgeLabels(g) {
   let graph = g.graph();
   graph.ranksep /= 2;
+  g.nodes().forEach((n) => {
+    let node = g.node(n);
+    if (!isNaN(node.layer)) {
+      node.layer *= 2;
+    }
+  });
   g.edges().forEach(e => {
     let edge = g.edge(e);
     edge.minlen *= 2;
@@ -839,7 +866,7 @@ function canonicalize(attrs) {
   return newAttrs;
 }
 
-},{"./acyclic":2,"./add-border-segments":3,"./coordinate-system":4,"./nesting-graph":9,"./normalize":10,"./order":15,"./parent-dummy-chains":20,"./position":22,"./rank":24,"./util":27,"@dagrejs/graphlib":29}],9:[function(require,module,exports){
+},{"./acyclic":2,"./add-border-segments":3,"./coordinate-system":4,"./nesting-graph":9,"./normalize":10,"./order":15,"./order/init-data-order":16,"./parent-dummy-chains":21,"./position":23,"./rank":25,"./util":28,"@dagrejs/graphlib":30}],9:[function(require,module,exports){
 let util = require("./util");
 
 module.exports = {
@@ -966,7 +993,7 @@ function cleanup(g) {
   });
 }
 
-},{"./util":27}],10:[function(require,module,exports){
+},{"./util":28}],10:[function(require,module,exports){
 "use strict";
 
 let util = require("./util");
@@ -1057,7 +1084,7 @@ function undo(g) {
   });
 }
 
-},{"./util":27}],11:[function(require,module,exports){
+},{"./util":28}],11:[function(require,module,exports){
 module.exports = addSubgraphConstraints;
 
 function addSubgraphConstraints(g, cg, vs) {
@@ -1213,7 +1240,7 @@ function createRootNode(g) {
   return v;
 }
 
-},{"../util":27,"@dagrejs/graphlib":29}],14:[function(require,module,exports){
+},{"../util":28,"@dagrejs/graphlib":30}],14:[function(require,module,exports){
 "use strict";
 
 let zipObject = require("../util").zipObject;
@@ -1281,7 +1308,7 @@ function twoLayerCrossCount(g, northLayer, southLayer) {
   return cc;
 }
 
-},{"../util":27}],15:[function(require,module,exports){
+},{"../util":28}],15:[function(require,module,exports){
 "use strict";
 
 let initOrder = require("./init-order");
@@ -1355,7 +1382,32 @@ function assignOrder(g, layering) {
   Object.values(layering).forEach(layer => layer.forEach((v, i) => g.node(v).order = i));
 }
 
-},{"../util":27,"./add-subgraph-constraints":11,"./build-layer-graph":13,"./cross-count":14,"./init-order":16,"./sort-subgraph":18,"@dagrejs/graphlib":29}],16:[function(require,module,exports){
+},{"../util":28,"./add-subgraph-constraints":11,"./build-layer-graph":13,"./cross-count":14,"./init-order":17,"./sort-subgraph":19,"@dagrejs/graphlib":30}],16:[function(require,module,exports){
+"use strict";
+
+module.exports = initDataOrder;
+
+const range = (end) => {
+  const length = typeof end === "number" && !isNaN(end) ? end : 0;
+  return Array.from(Array(length), (_, i) => i);
+};
+
+function initDataOrder(g, nodeOrder) {
+  let simpleNodes = g.nodes().filter(v => !g.children(v).length);
+  let maxRank = Math.max(...simpleNodes.map(v => g.node(v).rank));
+  let layers = range(maxRank + 1).map(() => []);
+
+  nodeOrder.forEach(n => {
+    let node = g.node(n);
+    if (node.dummy) {
+      return;
+    }
+    node.fixorder = layers[node.rank].length;
+    layers[node.rank].push(n);
+  });
+}
+
+},{}],17:[function(require,module,exports){
 "use strict";
 
 let util = require("../util");
@@ -1388,12 +1440,22 @@ function initOrder(g) {
   }
 
   let orderedVs = simpleNodes.sort((a, b) => g.node(a).rank - g.node(b).rank);
+
+  let fixOrderNodes = orderedVs
+    .filter((n) => g.node(n).fixorder !== undefined)
+    .sort((a, b) => g.node(a).fixorder - g.node(b).fixorder);
+
+  fixOrderNodes.forEach((n) => {
+    layers[g.node(n).rank].push(n);
+    visited[n] = true;
+  });
+
   orderedVs.forEach(dfs);
 
   return layers;
 }
 
-},{"../util":27}],17:[function(require,module,exports){
+},{"../util":28}],18:[function(require,module,exports){
 "use strict";
 
 let util = require("../util");
@@ -1513,14 +1575,14 @@ function mergeEntries(target, source) {
   source.merged = true;
 }
 
-},{"../util":27}],18:[function(require,module,exports){
+},{"../util":28}],19:[function(require,module,exports){
 let barycenter = require("./barycenter");
 let resolveConflicts = require("./resolve-conflicts");
 let sort = require("./sort");
 
 module.exports = sortSubgraph;
 
-function sortSubgraph(g, v, cg, biasRight) {
+function sortSubgraph(g, v, cg, biasRight, usePrev) {
   let movable = g.children(v);
   let node = g.node(v);
   let bl = node ? node.borderLeft : undefined;
@@ -1545,7 +1607,13 @@ function sortSubgraph(g, v, cg, biasRight) {
   let entries = resolveConflicts(barycenters, cg);
   expandSubgraphs(entries, subgraphs);
 
-  let result = sort(entries, biasRight);
+  entries.forEach(e => {
+    let node = g.node(e.vs[0]);
+    e.fixorder = node.fixorder;
+    e.order = node.order;
+  });
+
+  let result = sort(entries, biasRight, usePrev);
 
   if (bl) {
     result.vs = [bl, result.vs, br].flat(true);
@@ -1588,14 +1656,17 @@ function mergeBarycenters(target, other) {
   }
 }
 
-},{"./barycenter":12,"./resolve-conflicts":17,"./sort":19}],19:[function(require,module,exports){
+},{"./barycenter":12,"./resolve-conflicts":18,"./sort":20}],20:[function(require,module,exports){
 let util = require("../util");
 
 module.exports = sort;
 
-function sort(entries, biasRight) {
+function sort(entries, biasRight, usePrev) {
   let parts = util.partition(entries, entry => {
-    return entry.hasOwnProperty("barycenter");
+    return (
+      entry.hasOwnProperty("barycenter") ||
+      (entry.hasOwnProperty("fixorder") && !isNaN(entry.fixorder))
+    );
   });
   let sortable = parts.lhs,
     unsortable = parts.rhs.sort((a, b) => b.i - a.i),
@@ -1604,7 +1675,7 @@ function sort(entries, biasRight) {
     weight = 0,
     vsIndex = 0;
 
-  sortable.sort(compareWithBias(!!biasRight));
+  sortable.sort(compareWithBias(!!biasRight, !!usePrev));
 
   vsIndex = consumeUnsortable(vs, unsortable, vsIndex);
 
@@ -1634,19 +1705,29 @@ function consumeUnsortable(vs, unsortable, index) {
   return index;
 }
 
-function compareWithBias(bias) {
+function compareWithBias(bias, usePrev) {
   return (entryV, entryW) => {
+    if (entryV.fixorder !== undefined && entryW.fixorder !== undefined) {
+      return entryV.fixorder - entryW.fixorder;
+    }
     if (entryV.barycenter < entryW.barycenter) {
       return -1;
     } else if (entryV.barycenter > entryW.barycenter) {
       return 1;
+    }
+    if (usePrev && entryV.order !== undefined && entryW.order !== undefined) {
+      if (entryV.order < entryW.order) {
+        return -1;
+      } else if (entryV.order > entryW.order) {
+        return 1;
+      }
     }
 
     return !bias ? entryV.i - entryW.i : entryW.i - entryV.i;
   };
 }
 
-},{"../util":27}],20:[function(require,module,exports){
+},{"../util":28}],21:[function(require,module,exports){
 module.exports = parentDummyChains;
 
 function parentDummyChains(g) {
@@ -1732,7 +1813,7 @@ function postorder(g) {
   return result;
 }
 
-},{}],21:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 "use strict";
 
 let Graph = require("@dagrejs/graphlib").Graph;
@@ -2156,7 +2237,7 @@ function width(g, v) {
   return g.node(v).width;
 }
 
-},{"../util":27,"@dagrejs/graphlib":29}],22:[function(require,module,exports){
+},{"../util":28,"@dagrejs/graphlib":30}],23:[function(require,module,exports){
 "use strict";
 
 let util = require("../util");
@@ -2190,7 +2271,7 @@ function positionY(g) {
 }
 
 
-},{"../util":27,"./bk":21}],23:[function(require,module,exports){
+},{"../util":28,"./bk":22}],24:[function(require,module,exports){
 "use strict";
 
 var Graph = require("@dagrejs/graphlib").Graph;
@@ -2287,7 +2368,7 @@ function shiftRanks(t, g, delta) {
   t.nodes().forEach(v => g.node(v).rank += delta);
 }
 
-},{"./util":26,"@dagrejs/graphlib":29}],24:[function(require,module,exports){
+},{"./util":27,"@dagrejs/graphlib":30}],25:[function(require,module,exports){
 "use strict";
 
 var rankUtil = require("./util");
@@ -2337,7 +2418,7 @@ function networkSimplexRanker(g) {
   networkSimplex(g);
 }
 
-},{"./feasible-tree":23,"./network-simplex":25,"./util":26}],25:[function(require,module,exports){
+},{"./feasible-tree":24,"./network-simplex":26,"./util":27}],26:[function(require,module,exports){
 "use strict";
 
 var feasibleTree = require("./feasible-tree");
@@ -2574,7 +2655,7 @@ function isDescendant(tree, vLabel, rootLabel) {
   return rootLabel.low <= vLabel.lim && vLabel.lim <= rootLabel.lim;
 }
 
-},{"../util":27,"./feasible-tree":23,"./util":26,"@dagrejs/graphlib":29}],26:[function(require,module,exports){
+},{"../util":28,"./feasible-tree":24,"./util":27,"@dagrejs/graphlib":30}],27:[function(require,module,exports){
 "use strict";
 
 module.exports = {
@@ -2639,7 +2720,7 @@ function slack(g, e) {
   return g.node(e.w).rank - g.node(e.v).rank - g.edge(e).minlen;
 }
 
-},{}],27:[function(require,module,exports){
+},{}],28:[function(require,module,exports){
 /* eslint "no-console": off */
 
 "use strict";
@@ -2947,10 +3028,10 @@ function zipObject(props, values) {
   }, {});
 }
 
-},{"@dagrejs/graphlib":29}],28:[function(require,module,exports){
-module.exports = "1.0.4";
+},{"@dagrejs/graphlib":30}],29:[function(require,module,exports){
+module.exports = "1.0.0";
 
-},{}],29:[function(require,module,exports){
+},{}],30:[function(require,module,exports){
 /**
  * Copyright (c) 2014, Chris Pettitt
  * All rights reserved.
@@ -2990,7 +3071,7 @@ module.exports = {
   version: lib.version
 };
 
-},{"./lib":45,"./lib/alg":36,"./lib/json":46}],30:[function(require,module,exports){
+},{"./lib":46,"./lib/alg":37,"./lib/json":47}],31:[function(require,module,exports){
 module.exports = components;
 
 function components(g) {
@@ -3017,7 +3098,7 @@ function components(g) {
   return cmpts;
 }
 
-},{}],31:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 module.exports = dfs;
 
 /*
@@ -3086,7 +3167,7 @@ function forEachRight(array, iteratee) {
   return array;
 }
 
-},{}],32:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 var dijkstra = require("./dijkstra");
 
 module.exports = dijkstraAll;
@@ -3098,7 +3179,7 @@ function dijkstraAll(g, weightFunc, edgeFunc) {
   }, {});
 }
 
-},{"./dijkstra":33}],33:[function(require,module,exports){
+},{"./dijkstra":34}],34:[function(require,module,exports){
 var PriorityQueue = require("../data/priority-queue");
 
 module.exports = dijkstra;
@@ -3153,7 +3234,7 @@ function runDijkstra(g, source, weightFn, edgeFn) {
   return results;
 }
 
-},{"../data/priority-queue":43}],34:[function(require,module,exports){
+},{"../data/priority-queue":44}],35:[function(require,module,exports){
 var tarjan = require("./tarjan");
 
 module.exports = findCycles;
@@ -3164,7 +3245,7 @@ function findCycles(g) {
   });
 }
 
-},{"./tarjan":41}],35:[function(require,module,exports){
+},{"./tarjan":42}],36:[function(require,module,exports){
 module.exports = floydWarshall;
 
 var DEFAULT_WEIGHT_FUNC = () => 1;
@@ -3214,7 +3295,7 @@ function runFloydWarshall(g, weightFn, edgeFn) {
   return results;
 }
 
-},{}],36:[function(require,module,exports){
+},{}],37:[function(require,module,exports){
 module.exports = {
   components: require("./components"),
   dijkstra: require("./dijkstra"),
@@ -3229,7 +3310,7 @@ module.exports = {
   topsort: require("./topsort")
 };
 
-},{"./components":30,"./dijkstra":33,"./dijkstra-all":32,"./find-cycles":34,"./floyd-warshall":35,"./is-acyclic":37,"./postorder":38,"./preorder":39,"./prim":40,"./tarjan":41,"./topsort":42}],37:[function(require,module,exports){
+},{"./components":31,"./dijkstra":34,"./dijkstra-all":33,"./find-cycles":35,"./floyd-warshall":36,"./is-acyclic":38,"./postorder":39,"./preorder":40,"./prim":41,"./tarjan":42,"./topsort":43}],38:[function(require,module,exports){
 var topsort = require("./topsort");
 
 module.exports = isAcyclic;
@@ -3246,7 +3327,7 @@ function isAcyclic(g) {
   return true;
 }
 
-},{"./topsort":42}],38:[function(require,module,exports){
+},{"./topsort":43}],39:[function(require,module,exports){
 var dfs = require("./dfs");
 
 module.exports = postorder;
@@ -3255,7 +3336,7 @@ function postorder(g, vs) {
   return dfs(g, vs, "post");
 }
 
-},{"./dfs":31}],39:[function(require,module,exports){
+},{"./dfs":32}],40:[function(require,module,exports){
 var dfs = require("./dfs");
 
 module.exports = preorder;
@@ -3264,7 +3345,7 @@ function preorder(g, vs) {
   return dfs(g, vs, "pre");
 }
 
-},{"./dfs":31}],40:[function(require,module,exports){
+},{"./dfs":32}],41:[function(require,module,exports){
 var Graph = require("../graph");
 var PriorityQueue = require("../data/priority-queue");
 
@@ -3317,7 +3398,7 @@ function prim(g, weightFunc) {
   return result;
 }
 
-},{"../data/priority-queue":43,"../graph":44}],41:[function(require,module,exports){
+},{"../data/priority-queue":44,"../graph":45}],42:[function(require,module,exports){
 module.exports = tarjan;
 
 function tarjan(g) {
@@ -3364,7 +3445,7 @@ function tarjan(g) {
   return results;
 }
 
-},{}],42:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 function topsort(g) {
   var visited = {};
   var stack = {};
@@ -3402,7 +3483,7 @@ class CycleException extends Error {
 module.exports = topsort;
 topsort.CycleException = CycleException;
 
-},{}],43:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 /**
  * A min-priority queue data structure. This algorithm is derived from Cormen,
  * et al., "Introduction to Algorithms". The basic idea of a min-priority
@@ -3554,7 +3635,7 @@ class PriorityQueue {
 
 module.exports = PriorityQueue;
 
-},{}],44:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 "use strict";
 
 var DEFAULT_EDGE_NAME = "\x00";
@@ -4252,14 +4333,14 @@ function edgeObjToId(isDirected, edgeObj) {
 
 module.exports = Graph;
 
-},{}],45:[function(require,module,exports){
+},{}],46:[function(require,module,exports){
 // Includes only the "core" of graphlib
 module.exports = {
   Graph: require("./graph"),
   version: require("./version")
 };
 
-},{"./graph":44,"./version":47}],46:[function(require,module,exports){
+},{"./graph":45,"./version":48}],47:[function(require,module,exports){
 var Graph = require("./graph");
 
 module.exports = {
@@ -4341,7 +4422,7 @@ function read(json) {
   return g;
 }
 
-},{"./graph":44}],47:[function(require,module,exports){
+},{"./graph":45}],48:[function(require,module,exports){
 module.exports = '2.1.13';
 
 },{}]},{},[1])(1)

@@ -1,7 +1,7 @@
 MOD = dagre
 
 NPM = npm
-NYC = nyc
+NYC = npx nyc@15.1.0
 BROWSERIFY = ./node_modules/browserify/bin/cmd.js
 JSHINT = ./node_modules/jshint/bin/jshint
 ESLINT = ./node_modules/eslint/bin/eslint.js
@@ -56,7 +56,7 @@ $(BUILD_DIR)/$(MOD).js: index.js $(SRC_FILES) | unit-test
 $(BUILD_DIR)/$(MOD).min.js: $(BUILD_DIR)/$(MOD).js
 	@$(UGLIFY) $< --comments '@license' > $@
 
-dist: $(BUILD_FILES) | bower.json test
+dist: $(BUILD_FILES)
 	@rm -rf $@
 	@mkdir -p $@
 	@cp $^ dist

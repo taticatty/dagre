@@ -109,7 +109,16 @@ declare module '@dagrejs/dagre' {
     labeloffest?: number | undefined;
   }
 
-  export function layout(graph: graphlib.Graph, layout?: GraphLabel & NodeConfig & EdgeConfig): void;
+  export interface OrderConfig {
+    keepNodeOrder?: boolean | undefined;
+    nodeOrder?: string[] | undefined;
+    prevGraph?: graphlib.Graph | undefined;
+  }
+
+  export function layout(
+    graph: graphlib.Graph,
+    layout?: GraphLabel & NodeConfig & EdgeConfig & OrderConfig
+  ): void;
 
   export interface Edge {
     v: string;
