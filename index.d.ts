@@ -1,12 +1,4 @@
-// Type definitions for dagre 1.0.1
-// Project: https://github.com/dagrejs/dagre
-// Definitions by: Qinfeng Chen <https://github.com/qinfchen>
-//                 Pete Vilter <https://github.com/vilterp>
-//                 David Newell <https://github.com/rustedgrail>
-//                 Graham Lea <https://github.com/GrahamLea>
-// Definitions: https://github.com/DefinitelyTyped/DefinitelyTyped
-
-declare module '@dagrejs/dagre' {
+declare module 'dagre-configurable' {
   export namespace graphlib {
     class Graph<T = {}> {
       constructor(opt?: { directed?: boolean | undefined; multigraph?: boolean | undefined; compound?: boolean | undefined });
@@ -144,5 +136,10 @@ declare module '@dagrejs/dagre' {
     rx?: number | undefined;
     ry?: number | undefined;
     shape?: string | undefined;
+  };
+
+  export type GraphWithNodes<T> = graphlib.Graph<{}> & {
+    _edgeLabels: Record<string, { points: T[] }>;
+    _nodes: Record<string, Node<{ id: string }>>;
   };
 }
