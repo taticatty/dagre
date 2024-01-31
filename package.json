@@ -1,6 +1,6 @@
 {
   "name": "dagre-configurable",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Graph layout for JavaScript",
   "license": "MIT",
   "main": "index.js",
@@ -43,6 +43,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/dagrejs/dagre.git"
+    "url": "https://github.com/taticatty/dagre-configurable"
   }
 }
